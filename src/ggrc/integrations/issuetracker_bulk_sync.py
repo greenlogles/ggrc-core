@@ -286,23 +286,12 @@ class IssueTrackerBulkCreator(object):
       update_values = self._create_failed_items_list(errors)
       db.session.execute(stmt, update_values)
       db.session.commit()
-      log_info = self._create_failed_items_log_info(errors)
-      self.log_issues(log_info)
-      db.session.commit()
     except sa.exc.OperationalError as error:
       logger.exception(error)
       raise exceptions.InternalServerError(
           "Failed to turn integration off for IssueTracker issues "
           "that weren't synced in database."
       )
-
-  @staticmethod
-  def _create_failed_items_log_info(errors):
-    """Create applicable for log_issues method list from errors """
-    return [(
-        object_._inflector.model_singular,
-        object_.id
-    ) for object_, _ in errors]
 
   @staticmethod
   def _create_failed_items_list(errors):
@@ -856,13 +845,11 @@ class IssueTrackerDisableUpdater(IssueTrackerCommentUpdater):
         flask.wrappers.Response - response with result of generation.
     """
     objects_to_comment = request_data.get("objects_to_comment", {})
-    objects_to_comment = self.get_issuetracked_objects(objects_to_comment)
-    issuetracked_info = []
     with benchmark("Load issuetracked objects from database"):
-      for obj in objects_to_comment:
-        issuetracked_info.append({
-            "obj": obj,
-        })
+      objects_to_comment = self.get_issuetracked_objects(objects_to_comment)
+    issuetracked_info = [{
+        "obj": obj,
+    } for obj in objects_to_comment]
     created, errors = self.handle_issuetracker_sync(issuetracked_info)
     logger.info(
         "Synchronized comments for issues count: %s, failed count: %s",

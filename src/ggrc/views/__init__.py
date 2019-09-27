@@ -288,11 +288,11 @@ def background_issues_update(task):
     if comment_args.get("comments"):
       comment_updater.sync_issuetracker(comment_args)
 
-    disable_args = integration_utils.build_disabled_objects_args(
-        mail_data,
-        objects_to_comment
-    )
-    if disable_args.get("objects_to_comment"):
+    if objects_to_comment:
+      disable_args = integration_utils.build_disabled_objects_args(
+          mail_data,
+          objects_to_comment
+      )
       disable_updater.sync_issuetracker(disable_args)
 
     errors = _merge_errors(create_errors, update_errors)

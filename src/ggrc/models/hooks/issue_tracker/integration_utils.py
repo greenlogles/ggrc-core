@@ -15,8 +15,6 @@ from ggrc.utils import referenced_objects
 
 def is_already_linked(ticket_id):
   """Checks if ticket with ticket_id is already linked to GGRC object"""
-  if ticket_id is None:
-    return False
   exists_query = db.session.query(
       all_models.IssuetrackerIssue.issue_id
   ).filter_by(issue_id=ticket_id).exists()
@@ -140,10 +138,10 @@ def build_updated_objects_args(revision_ids, mail_data):
 
 def build_disabled_objects_args(mail_data, objects_to_comment):
   """Build params for bulk Issue Tracker disable comments update."""
-  arg_list = {}
-  arg_list["objects_to_comment"] = objects_to_comment
-  arg_list["mail_data"] = mail_data
-  return arg_list
+  return {
+      "objects_to_comment": objects_to_comment,
+      "mail_data": mail_data,
+  }
 
 
 def build_comments_args(revision_ids, mail_data):

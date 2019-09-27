@@ -451,7 +451,10 @@ class ImportBlockConverter(people_cache.WithPeopleCache,
              all_models.ImportExport.STOPPED_STATUS:
             raise exceptions.ImportStoppedException()
           row.process_row()
-          objects_to_comment = row.objects_to_comment
+          objects_to_comment = self._handle_objects_to_comment(
+              objects_to_comment,
+              row.objects_to_comment
+          )
         except exceptions.ImportStoppedException:
           raise
         except ValueError as err:
@@ -475,6 +478,31 @@ class ImportBlockConverter(people_cache.WithPeopleCache,
       is_final_commit_required = not (self.converter.dry_run or self.ignore)
       if is_final_commit_required:
         db.session.commit()
+
+  def _handle_objects_to_comment(self, objects_to_comment, row_objects):
+    """Handle objects_to_comment in row
+
+      Args:
+          objects_to_comment: dict
+          row_objects: dict type of {'obj_type': list_of_ids}
+    """
+    if not objects_to_comment:
+      if self._is_dict_empty(row_objects):
+        return None
+      return row_objects
+
+    for key, value in row_objects.items():
+      if value:
+        objects_to_comment[key] += value
+    return objects_to_comment
+
+  @staticmethod
+  def _is_dict_empty(dictionary):
+    """Check if dictionary with keys has any non empty values"""
+    for key in dictionary.keys():
+      if dictionary[key]:
+        return False
+    return True
 
   def get_unique_values_dict(self, object_class):
     """Get the varible to storing row numbers for unique values.

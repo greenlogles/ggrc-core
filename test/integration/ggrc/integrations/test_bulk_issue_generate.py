@@ -464,69 +464,6 @@ class TestBulkIssuesGenerate(TestBulkIssuesSync):
     self.assertIn(assmt.title, body)
     self.assertIn(data_handlers.get_object_url(assmt), body)
 
-  def test_create_revisions_failed_to_create_asmnt_iti(self):
-    """Test create revisions in case bulk sync assessments failed"""
-    _, assessment_ids = self.setup_assessments(1)
-    assessment_id = assessment_ids[0]
-    expected_errors = [['Assessment', assessment_id, '']]
-    asmnt_issuetracker_info = ('Assessment', assessment_id, "123", "321"),
-    asmnt = inflector.get_model('Assessment').query.get(assessment_id)
-    iti_obj_id = asmnt.issuetracker_issue.id
-
-    with mock.patch(
-        'ggrc.integrations.issuetracker_bulk_sync.'
-        'IssueTrackerBulkCreator.sync_issue',
-        side_effect=integrations_errors.Error
-    ):
-      response = self.generate_issues_for(asmnt_issuetracker_info)
-
-    self.assert200(response)
-    self.assertEqual(response.json.get('errors'), expected_errors)
-    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
-    revision = all_models.Revision.query.filter(
-        all_models.Revision.resource_id == iti_obj_id,
-        all_models.Revision.resource_type == 'IssuetrackerIssue',
-        all_models.Revision.action == 'modified',
-    ).one()
-    self.assertEqual(iti_obj.enabled, False)
-    self.assertEqual(revision.content['enabled'], False)
-
-  def test_create_revisions_failed_to_create_issue_iti(self):
-    """Test create revisions in case bulk sync issues failed"""
-    with factories.single_commit():
-      person = factories.PersonFactory()
-      issue = factories.IssueFactory(modified_by=person)
-      issue_id = issue.id
-      expected_errors = [['Issue', issue_id, '']]
-      for role_name in ["Admin", "Primary Contacts"]:
-        issue.add_person_with_role_name(person, role_name)
-      iti_obj = factories.IssueTrackerIssueFactory(
-          enabled=True,
-          issue_tracked_obj=issue,
-          issue_id=None,
-      )
-      iti_obj_id = iti_obj.id
-    issue_issuetracker_info = [
-        ("Issue", issue_id, '123', '321')
-    ]
-
-    with mock.patch(
-        'ggrc.integrations.issuetracker_bulk_sync.'
-        'IssueTrackerBulkCreator.sync_issue',
-        side_effect=integrations_errors.Error
-    ):
-      response = self.generate_issues_for(issue_issuetracker_info)
-
-    self.assert200(response)
-    self.assertEqual(response.json.get('errors'), expected_errors)
-    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
-    revision = all_models.Revision.query.filter(
-        all_models.Revision.resource_id == iti_obj.id,
-        all_models.Revision.resource_type == 'IssuetrackerIssue',
-        all_models.Revision.action == 'modified',
-    ).one()
-    self.assertEqual(revision.content['enabled'], False)
-
 
 @ddt.ddt
 class TestBulkIssuesChildGenerate(TestBulkIssuesSync):
@@ -865,38 +802,6 @@ class TestBulkIssuesChildGenerate(TestBulkIssuesSync):
     }
     self.assertEquals(set(revisions), expected_revisions)
 
-  def test_failed_sync_child_issues_enabled_not_changed(self):
-    """Test issueTracker issue object wasn't
-    changed in case bulk sync failed"""
-    with factories.single_commit():
-      asmnt = factories.AssessmentFactory()
-      expected_errors = [['Assessment', asmnt.id, '']]
-      iti_obj = factories.IssueTrackerIssueFactory(
-          enabled=True,
-          issue_tracked_obj=asmnt.audit
-      )
-    iti_obj_id = iti_obj.id
-
-    with mock.patch(
-        'ggrc.integrations.issuetracker_bulk_sync.'
-        'IssueTrackerBulkChildCreator.sync_issue',
-        side_effect=integrations_errors.Error
-    ):
-      response = self.generate_children_issues_for(
-          "Audit", asmnt.audit.id, "Assessment"
-      )
-
-    self.assert200(response)
-    self.assertEqual(response.json.get('errors'), expected_errors)
-    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
-    self.assertEqual(iti_obj.enabled, True)
-    revisions = all_models.Revision.query.filter(
-        all_models.Revision.resource_id == iti_obj_id,
-        all_models.Revision.resource_type == 'IssuetrackerIssue',
-        all_models.Revision.action == 'modified',
-    ).all()
-    self.assertEquals(revisions, [])
-
 
 @ddt.ddt
 class TestBulkIssuesUpdate(TestBulkIssuesSync):
@@ -911,7 +816,7 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
         all_models.IssuetrackerIssue.object_id.in_(assessment_ids)
     )
     for issue in issues:
-      issue.enabled = True
+      issue.enabled = 1
       issue.title = ""
       issue.component_id = "1"
       issue.hotlist_id = "1"
@@ -1016,43 +921,12 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
     # 3 times for each assessment
     self.assertEqual(update_issue_mock.call_count, 9)
 
-  def test_get_assmt_issue_json(self):
+  @ddt.data("Issue", "Assessment")
+  def test_get_issue_json(self, model):
     """Test get_issue_json method issue's update"""
     with factories.single_commit():
-      obj = factories.AssessmentFactory()
-      factories.IssueTrackerIssueFactory(
-          enabled=True,
-          issue_tracked_obj=obj,
-          title='title',
-          component_id=111,
-          hotlist_id=222,
-          issue_type="PROCESS",
-          issue_priority="P2",
-          issue_severity="S2",
-      )
-    expected_result = {
-        'component_id': 111,
-        'severity': u'S2',
-        'title': u'title',
-        'hotlist_ids': [222],
-        'priority': u'P2',
-        'type': u'PROCESS',
-        'custom_fields': [{
-            'display_string': 'Due Date',
-            'type': 'DATE',
-            'name': 'Due Date',
-            'value': None,
-        }],
-    }
-    updater = issuetracker_bulk_sync.IssueTrackerBulkUpdater()
-    # pylint: disable=protected-access
-    result = updater._get_issue_json(obj)
-    self.assertEqual(expected_result, result)
-
-  def test_get_issue_issue_json(self):
-    """Test get_issue_json method issue's update"""
-    with factories.single_commit():
-      obj = factories.IssueFactory()
+      factory = factories.get_model_factory(model)
+      obj = factory()
       factories.IssueTrackerIssueFactory(
           enabled=True,
           issue_tracked_obj=obj,
@@ -1075,39 +949,6 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
     # pylint: disable=protected-access
     result = updater._get_issue_json(obj)
     self.assertEqual(expected_result, result)
-
-  def test_failed_update_issues_enabled_not_changed(self):
-    """Test issueTracker issue object enabled status wasn't
-    changed in case bulk sync failed"""
-    _, assessment_ids = self.setup_assessments(1)
-    assessment_id = assessment_ids[0]
-    asmnt = inflector.get_model('Assessment').query.get(assessment_id)
-    expected_errors = [['Assessment', asmnt.id, '']]
-    iti_obj = asmnt.issuetracker_issue
-    iti_obj_id = iti_obj.id
-    iti_obj.issue_id = iti_obj_id
-    db.session.commit()
-    asmnt_issuetracker_info = [
-        ("Assessment", id_, "123", "321") for id_ in assessment_ids
-    ]
-
-    with mock.patch(
-        'ggrc.integrations.issuetracker_bulk_sync.'
-        'IssueTrackerBulkUpdater.sync_issue',
-        side_effect=integrations_errors.Error
-    ):
-      response = self.update_issues_for(asmnt_issuetracker_info)
-
-    self.assert200(response)
-    self.assertEqual(response.json.get('errors'), expected_errors)
-    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
-    self.assertEqual(iti_obj.enabled, True)
-    revisions = all_models.Revision.query.filter(
-        all_models.Revision.resource_id == iti_obj_id,
-        all_models.Revision.resource_type == 'IssuetrackerIssue',
-        all_models.Revision.action == 'modified',
-    ).all()
-    self.assertEquals(revisions, [])
 
 
 @ddt.ddt
@@ -1197,7 +1038,7 @@ class TestBulkCommentUpdate(TestBulkIssuesSync):
 
   @mock.patch('ggrc.integrations.issues.Client.update_issue')
   @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
-  def test_create_disable_comment_asmt(self, mock_update_issue):
+  def test_create_disable_comment_assmt(self, mock_update_issue):
     """Test comment creation for assessment with tracker turned off"""
     with factories.single_commit():
       audit = factories.AuditFactory()
@@ -1208,8 +1049,7 @@ class TestBulkCommentUpdate(TestBulkIssuesSync):
       factories.IssueTrackerIssueFactory(
           enabled=True, issue_tracked_obj=assessment,
       )
-    expected_comment = "Changes to this GGRC Assessment will no " \
-                       "longer be tracked within this bug."
+    expected_comment = constants.DISABLED_TMPL
 
     response = self.import_data(OrderedDict([
         ('object_type', 'Assessment'),
@@ -1229,6 +1069,54 @@ class TestBulkCommentUpdate(TestBulkIssuesSync):
 
   @mock.patch('ggrc.integrations.issues.Client.update_issue')
   @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
+  def test_bulk_create_disable_comment(self, mock_update_issue):
+    """Test comment creation for assessment with tracker turned off"""
+    with factories.single_commit():
+      audit = factories.AuditFactory()
+      factories.IssueTrackerIssueFactory(
+          enabled=True, issue_tracked_obj=audit
+      )
+      assessment1 = factories.AssessmentFactory(audit=audit)
+      factories.IssueTrackerIssueFactory(
+          enabled=True, issue_tracked_obj=assessment1,
+      )
+      assmt1_id = assessment1.id
+      assessment2 = factories.AssessmentFactory(audit=audit)
+      factories.IssueTrackerIssueFactory(
+          enabled=True, issue_tracked_obj=assessment2,
+      )
+      assmt2_id = assessment2.id
+    expected_comment = constants.DISABLED_TMPL
+    asmt1_data = OrderedDict([
+        ('object_type', 'Assessment'),
+        ('Code*', assessment1.slug),
+        ('Audit', audit.slug),
+        ('title', 'new title'),
+        ('Ticket Tracker Integration', 'Off'),
+    ])
+    asmt2_data = OrderedDict([
+        ('object_type', 'Assessment'),
+        ('Code*', assessment2.slug),
+        ('Audit', audit.slug),
+        ('title', 'new title'),
+        ('Ticket Tracker Integration', 'Off'),
+    ])
+
+    response = self.import_data(asmt1_data, asmt2_data)
+
+    self._check_csv_response(response, {})
+    assmt1 = all_models.Assessment.query.get(assmt1_id)
+    assmt2 = all_models.Assessment.query.get(assmt2_id)
+    self.assertFalse(assmt1.issuetracker_issue.enabled)
+    self.assertFalse(assmt2.issuetracker_issue.enabled)
+    self.assertEqual(mock_update_issue.call_count, 2)
+    self.assertEqual(
+        mock_update_issue.call_args_list[0][0][1]["comment"],
+        expected_comment
+    )
+
+  @mock.patch('ggrc.integrations.issues.Client.update_issue')
+  @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
   def test_create_disable_comment_issue(self, mock_update_issue):
     """Test comment creation for issue with tracker turned off"""
     issue = factories.IssueFactory()
@@ -1237,8 +1125,8 @@ class TestBulkCommentUpdate(TestBulkIssuesSync):
         issue_tracked_obj=issue
     )
     iti_issue_id = iti.issue_id
-    expected_comment = "Changes to this GGRC object will no " \
-                       "longer be tracked within this bug."
+    builder = issue_tracker_params_builder
+    expected_comment = builder.BaseIssueTrackerParamsBuilder.DISABLE_TMPL
     self.assertTrue(issue.issuetracker_issue.enabled)
 
     response = self.import_data(OrderedDict([
