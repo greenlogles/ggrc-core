@@ -386,6 +386,13 @@ def prepare_comment_update_json(object_, comment, author):
   return params.get_issue_tracker_params()
 
 
+def prepare_disable_comment_json():
+  """Prepare json for adding disable comment to IssueTracker issue"""
+  builder = issue_tracker_params_builder.IssueParamsBuilder()
+  builder.params.add_comment(builder.DISABLE_TMPL)
+  return builder.params.get_issue_tracker_params()
+
+
 def _hook_issue_post(sender, objects=None, sources=None):
   """Handle creating issue related info."""
   del sender

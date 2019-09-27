@@ -142,21 +142,25 @@ class ImportConverter(BaseConverter):
     """Process import and post import jobs."""
 
     revision_ids = []
+    objects_to_comment = []
     for converter in self.initialize_block_converters():
       if not converter.ignore:
         try:
-          converter.import_csv_data()
+          objects_to_comment = converter.import_csv_data()
         except exceptions.ImportStoppedException:
           raise
         revision_ids.extend(converter.revision_ids)
       self.response_data.append(converter.get_info())
     self._start_compute_attributes_job(revision_ids)
     if not self.dry_run and settings.ISSUE_TRACKER_ENABLED:
-      self._start_issuetracker_update(revision_ids)
+      self._start_issuetracker_update(revision_ids, objects_to_comment)
     self.drop_cache()
 
-  def _start_issuetracker_update(self, revision_ids):
-    """Create or update issuetracker tickets for all imported instances."""
+  def _start_issuetracker_update(self, revision_ids, objects_to_comment):
+    """
+    Create or update issuetracker tickets for all imported instances.
+    Add objects_to_comment dict to params
+    """
 
     arg_list = {"revision_ids": revision_ids}
 
@@ -168,6 +172,8 @@ class ImportConverter(BaseConverter):
     }
 
     arg_list["mail_data"] = mail_data
+    if objects_to_comment:
+      arg_list["objects_to_comment"] = objects_to_comment
 
     from ggrc import views
     views.background_update_issues(parameters=arg_list)

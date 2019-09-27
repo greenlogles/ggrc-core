@@ -443,6 +443,7 @@ class ImportBlockConverter(people_cache.WithPeopleCache,
   def import_csv_data(self):  # noqa
     """Perform import sequence for the block."""
     try:
+      objects_to_comment = None
       for row in self.row_converters_from_csv():
         try:
           ie_status = self.converter.get_job_status()
@@ -450,6 +451,7 @@ class ImportBlockConverter(people_cache.WithPeopleCache,
              all_models.ImportExport.STOPPED_STATUS:
             raise exceptions.ImportStoppedException()
           row.process_row()
+          objects_to_comment = row.objects_to_comment
         except exceptions.ImportStoppedException:
           raise
         except ValueError as err:
@@ -463,6 +465,7 @@ class ImportBlockConverter(people_cache.WithPeopleCache,
           logger.exception(errors.UNEXPECTED_ERROR)
         self._update_info(row)
         _app_ctx_stack.top.sqlalchemy_queries = []
+      return objects_to_comment
     except exceptions.ImportStoppedException:
       raise
     except Exception:  # pylint: disable=broad-except

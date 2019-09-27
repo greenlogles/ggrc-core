@@ -837,3 +837,99 @@ class IssueTrackerCommentUpdater(IssueTrackerBulkUpdater):
           "Can't create issuetracker issue json for {}".format(object_.type)
       )
     return issue_json
+
+
+class IssueTrackerDisableUpdater(IssueTrackerCommentUpdater):
+  """This class should sync comments added to issuetracked objects."""
+
+  def sync_issuetracker(self, request_data):
+    """Generate IssueTracker issues in bulk.
+
+    Args:
+        request_data: {
+            'objects_to_comment': {'object_type': [obj_ids]},
+            'mail_data': {user_email: email}
+        }
+        Disabled issuetracker issues list contains ids of objects
+        to by synchronized.
+    Returns:
+        flask.wrappers.Response - response with result of generation.
+    """
+    objects_to_comment = request_data.get("objects_to_comment", {})
+    objects_to_comment = self.get_issuetracked_objects(objects_to_comment)
+    issuetracked_info = []
+    with benchmark("Load issuetracked objects from database"):
+      for obj in objects_to_comment:
+        issuetracked_info.append({
+            "obj": obj,
+        })
+    created, errors = self.handle_issuetracker_sync(issuetracked_info)
+    logger.info(
+        "Synchronized comments for issues count: %s, failed count: %s",
+        len(created),
+        len(errors),
+    )
+    return self.make_response(errors)
+
+  # pylint: disable=arguments-differ
+  def _get_issue_json(self, object_):
+    """Get json data for IssueTracker issue related to provided object."""
+    issue_json = None
+    integration_handler = self.INTEGRATION_HANDLERS.get(object_.type)
+    if hasattr(integration_handler, "prepare_disable_comment_json"):
+      issue_json = integration_handler.prepare_disable_comment_json()
+
+    if not issue_json:
+      raise integrations_errors.Error(
+          "Can't create issuetracker issue json for {}".format(object_.type)
+      )
+    return issue_json
+
+  @staticmethod
+  def get_issuetracked_objects(objects_to_comment):
+    """Fetch issuetracked objects from db."""
+    objects = []
+    for obj_type, obj_ids in objects_to_comment.items():
+      issuetracked_model = inflector.get_model(obj_type)
+      objects.extend(issuetracked_model.query.join(
+          all_models.IssuetrackerIssue,
+          sa.and_(
+              all_models.IssuetrackerIssue.object_type == obj_type,
+              all_models.IssuetrackerIssue.object_id == issuetracked_model.id
+          )
+      ).filter(
+          all_models.IssuetrackerIssue.object_id.in_(obj_ids),
+          all_models.IssuetrackerIssue.issue_id.isnot(None),)
+      )
+    return objects
+
+  # pylint: disable=arguments-differ
+  def handle_issuetracker_sync(self, tracked_objs):
+    """Create comments to IssueTracker issues for tracked objects in bulk.
+
+    Args:
+        tracked_objs: [{obj: object}] - tracked object info.
+    Returns:
+        Tuple with dicts of created issue info and errors.
+    """
+    errors = []
+    created = {}
+
+    # IssueTracker server api doesn't support collection post, thus we
+    # create issues in loop.
+    for obj_info in tracked_objs:
+      try:
+        issue_json = self._get_issue_json(obj_info["obj"])
+
+        issue_id = obj_info["obj"].issuetracker_issue.issue_id
+        with benchmark("Synchronize issue for {} with id {}".format(
+            obj_info["obj"].type, obj_info["obj"].id
+        )):
+          res = self.sync_issue(issue_json, issue_id)
+
+        self._process_result(res, issue_json)
+        created[(obj_info["obj"].type, obj_info["obj"].id)] = issue_json
+      except (TypeError, ValueError, AttributeError, integrations_errors.Error,
+              ggrc_exceptions.ValidationError, exceptions.Forbidden) as error:
+        self._add_error(errors, obj_info["obj"], error)
+    return created, errors

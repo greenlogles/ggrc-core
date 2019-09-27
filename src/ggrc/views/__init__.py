@@ -264,11 +264,13 @@ def background_issues_update(task):
   try:
     from ggrc.integrations import issuetracker_bulk_sync
     comment_updater = issuetracker_bulk_sync.IssueTrackerCommentUpdater()
+    disable_updater = issuetracker_bulk_sync.IssueTrackerDisableUpdater()
     bulk_updater = issuetracker_bulk_sync.IssueTrackerBulkUpdater()
     bulk_creator = issuetracker_bulk_sync.IssueTrackerBulkCreator()
     params = getattr(task, "parameters", {})
     revision_ids = params.get("revision_ids")
     mail_data = params.get("mail_data")
+    objects_to_comment = params.get('objects_to_comment')
     update_args = integration_utils.build_updated_objects_args(revision_ids,
                                                                mail_data)
     update_errors = None
@@ -285,6 +287,13 @@ def background_issues_update(task):
                                                          mail_data)
     if comment_args.get("comments"):
       comment_updater.sync_issuetracker(comment_args)
+
+    disable_args = integration_utils.build_disabled_objects_args(
+        mail_data,
+        objects_to_comment
+    )
+    if disable_args.get("objects_to_comment"):
+      disable_updater.sync_issuetracker(disable_args)
 
     errors = _merge_errors(create_errors, update_errors)
     return bulk_creator.make_response(errors)

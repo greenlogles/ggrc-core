@@ -43,6 +43,12 @@ class IssueTrackerColumnHandler(handlers.ColumnHandler):
     if self.dry_run or self.value is None:
       return
 
+    initial_obj = self.row_converter.obj
+    if initial_obj.issue_tracker.get('enabled') and not self.value:
+      issue = initial_obj.issuetracker_issue
+      self.row_converter.objects_to_comment[issue.object_type]\
+          .append(issue.object_id)
+
     self._set_issue_tracker_value(self.value)
 
 

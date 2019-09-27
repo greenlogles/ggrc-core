@@ -1194,3 +1194,66 @@ class TestBulkCommentUpdate(TestBulkIssuesSync):
                      expected_comments)
     upd_mock.assert_called_once()
     create_mock.assert_not_called()
+
+  @mock.patch('ggrc.integrations.issues.Client.update_issue')
+  @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
+  def test_create_disable_comment_asmt(self, mock_update_issue):
+    """Test comment creation for assessment with tracker turned off"""
+    with factories.single_commit():
+      audit = factories.AuditFactory()
+      factories.IssueTrackerIssueFactory(
+          enabled=True, issue_tracked_obj=audit
+      )
+      assessment = factories.AssessmentFactory(audit=audit)
+      factories.IssueTrackerIssueFactory(
+          enabled=True, issue_tracked_obj=assessment,
+      )
+    expected_comment = "Changes to this GGRC Assessment will no " \
+                       "longer be tracked within this bug."
+
+    response = self.import_data(OrderedDict([
+        ('object_type', 'Assessment'),
+        ('Code*', assessment.slug),
+        ('Audit', audit.slug),
+        ('title', 'new title'),
+        ('Ticket Tracker Integration', 'Off'),
+    ]))
+
+    self._check_csv_response(response, {})
+    asmt = all_models.Assessment.query.get(assessment.id)
+    self.assertFalse(asmt.issuetracker_issue.enabled)
+    self.assertEqual(
+        mock_update_issue.call_args_list[0][0][1]["comment"],
+        expected_comment
+    )
+
+  @mock.patch('ggrc.integrations.issues.Client.update_issue')
+  @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
+  def test_create_disable_comment_issue(self, mock_update_issue):
+    """Test comment creation for issue with tracker turned off"""
+    issue = factories.IssueFactory()
+    iti = factories.IssueTrackerIssueFactory(
+        enabled=True,
+        issue_tracked_obj=issue
+    )
+    iti_issue_id = iti.issue_id
+    expected_comment = "Changes to this GGRC object will no " \
+                       "longer be tracked within this bug."
+    self.assertTrue(issue.issuetracker_issue.enabled)
+
+    response = self.import_data(OrderedDict([
+        ('object_type', 'Issue'),
+        ('Code*', issue.slug),
+        ('title', 'TestTitle'),
+        ("Due Date*", "2016-10-24T15:35:37"),
+        ('Ticket Tracker Integration', 'Off'),
+    ]))
+
+    self._check_csv_response(response, {})
+    issue = all_models.Issue.query.get(issue.id)
+    self.assertEqual(mock_update_issue.call_args_list[0][0][0], iti_issue_id)
+    self.assertFalse(issue.issuetracker_issue.enabled)
+    self.assertEqual(
+        mock_update_issue.call_args_list[0][0][1]["comment"],
+        expected_comment
+    )

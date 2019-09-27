@@ -138,6 +138,14 @@ def build_updated_objects_args(revision_ids, mail_data):
   return _create_args(objects, mail_data)
 
 
+def build_disabled_objects_args(mail_data, objects_to_comment):
+  """Build params for bulk Issue Tracker disable comments update."""
+  arg_list = {}
+  arg_list["objects_to_comment"] = objects_to_comment
+  arg_list["mail_data"] = mail_data
+  return arg_list
+
+
 def build_comments_args(revision_ids, mail_data):
   """Build params for bulk Issue Tracker comments update."""
   comments = _collect_comments(revision_ids)

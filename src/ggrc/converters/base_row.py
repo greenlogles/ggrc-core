@@ -80,6 +80,10 @@ class ImportRowConverter(RowConverter):
     self.is_new_object_set = False
     self._is_obj_readonly = False
     self.status_changing = False
+    self.objects_to_comment = {
+        'Issue': [],
+        'Assessment': [],
+    }
 
   def _is_allowed_for_readonly_obj(self, attr_name, handler):
     """Return whether attr is allowed for readonly objects"""
