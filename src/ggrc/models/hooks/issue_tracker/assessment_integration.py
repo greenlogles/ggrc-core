@@ -1060,16 +1060,19 @@ class AssessmentTrackerHandler(object):
         List with "custom fields" for issue tracker
     """
     custom_fields = []
+    due_date_value = None
 
-    if fields.get("due_date"):
-      custom_fields.append(
-          {
-              "name": constants.CustomFields.DUE_DATE,
-              "value": fields["due_date"].strftime("%Y-%m-%d"),
-              "type": "DATE",
-              "display_string": constants.CustomFields.DUE_DATE
-          }
-      )
+    if fields.get('due_date'):
+      due_date_value = fields["due_date"].strftime("%Y-%m-%d")
+
+    custom_fields.append(
+        {
+            "name": constants.CustomFields.DUE_DATE,
+            "value": due_date_value,
+            "type": "DATE",
+            "display_string": constants.CustomFields.DUE_DATE
+        }
+    )
 
     return custom_fields
 
@@ -2715,7 +2718,7 @@ class AssessmentTrackerHandler(object):
     custom_fields_ggrc = issue_payload.get("custom_fields") or []
     custom_fields_tracker = issue_tracker_info.get("custom_fields") or []
 
-    if any(custom_fields_ggrc):
+    if any(custom_fields_ggrc) and custom_fields_ggrc[0]["value"]:
       due_date_payload = datetime.datetime.strptime(
           custom_fields_ggrc[0]["value"].strip(),
           "%Y-%m-%d"

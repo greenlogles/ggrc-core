@@ -2,11 +2,13 @@
 # Licensed under http://www.apache.org/licenses/LICENSE-2.0 <see LICENSE file>
 
 """Integration test for Assessment object sync cron job."""
+from datetime import datetime
 
 import ddt
 import mock
 
 from ggrc import settings
+from ggrc.models import all_models
 from ggrc.integrations.synchronization_jobs import assessment_sync_job
 from ggrc.integrations.synchronization_jobs import sync_utils
 from ggrc.integrations import constants
@@ -35,6 +37,7 @@ class TestAsmtSyncJob(ggrc.TestCase):
       factories.IssueTrackerIssueFactory(
           enabled=True,
           issue_tracked_obj=asmt,
+          due_date=datetime.utcnow(),
           **TestAsmtSyncJob._issuetracker_data()
       )
       return asmt
@@ -137,3 +140,27 @@ class TestAsmtSyncJob(ggrc.TestCase):
       assessment_sync_job.sync_assessment_attributes()
 
     update_issue_mock.assert_called_once_with(*expected_upd_args)
+
+  # pylint: disable=unused-argument
+  def test_empty_due_date_sync(self, update_issue_mock):
+    """Test adding empty due_date in Issue"""
+    due_date = None
+    assmt = self._create_asmt(True)
+    assmt.start_date = due_date
+    issue = assmt.issuetracker_issue
+    iti = self._to_issuetrakcer_repr(assmt)
+    iti[assmt.issuetracker_issue.issue_id].update({
+        "custom_fields": [{
+            constants.CustomFields.DUE_DATE:
+                issue.due_date.strftime("%Y-%m-%d")
+        }],
+    })
+    batches = [iti]
+
+    with mock.patch.object(sync_utils, "iter_issue_batches",
+                           return_value=batches):
+      assessment_sync_job.sync_assessment_attributes()
+
+    issue = all_models.IssuetrackerIssue.query.get(
+        issue.id)
+    self.assertEquals(issue.due_date, due_date)

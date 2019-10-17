@@ -473,6 +473,11 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
         'hotlist_ids': [333, ],
         'priority': u'P0',
         'type': constants.DEFAULT_ISSUETRACKER_VALUES['issue_type'],
+        'custom_fields': [{
+            'display_string': 'Due Date',
+            'type': 'DATE',
+            'name': 'Due Date',
+            'value': None}],
     }
     self.assertEqual(expected_info, with_info)
     self.assertEqual(without_info, with_info)
@@ -615,7 +620,13 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
               'title': iti_title,
               'hotlist_ids': [222222],
               'priority': "P2",
-              'comment': expected_comment}
+              'comment': expected_comment,
+              'custom_fields': [{
+                  'display_string': 'Due Date',
+                  'type': 'DATE',
+                  'name': 'Due Date',
+                  'value': None,
+              }]}
     mocked_update_issue.assert_called_once_with(iti_issue_id, kwargs)
 
   @mock.patch("ggrc.integrations.issues.Client.update_issue")
@@ -972,7 +983,13 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
                 'severity': "S4",
                 'title': iti.title,
                 'hotlist_ids': [],
-                'priority': "P4"}
+                'priority': "P4",
+                'custom_fields': [{
+                    'display_string': 'Due Date',
+                    'type': 'DATE',
+                    'name': 'Due Date',
+                    'value': None,
+                }]}
       mocked_update_issue.assert_called_once_with(iti_issue_id[0], kwargs)
 
   @mock.patch('ggrc.integrations.issues.Client.update_issue')
@@ -1017,7 +1034,13 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
                 'severity': iti.issue_severity,
                 'title': new_title,
                 'hotlist_ids': [],
-                'priority': iti.issue_priority}
+                'priority': iti.issue_priority,
+                'custom_fields': [{
+                    'display_string': 'Due Date',
+                    'type': 'DATE',
+                    'name': 'Due Date',
+                    'value': None,
+                }]}
       mocked_update_issue.assert_called_once_with(iti_issue_id[0], kwargs)
 
       issue = db.session.query(models.IssuetrackerIssue).get(iti.id)
@@ -1122,7 +1145,13 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
                 'severity': "S2",
                 'title': iti.title,
                 'hotlist_ids': [],
-                'priority': "P2"}
+                'priority': "P2",
+                'custom_fields': [{
+                    'display_string': 'Due Date',
+                    'type': 'DATE',
+                    'name': 'Due Date',
+                    'value': None,
+                }]}
       asmt_link = tracker_handler._get_assessment_page_url(asmt)
       if 'comment' in additional_kwargs:
         try:

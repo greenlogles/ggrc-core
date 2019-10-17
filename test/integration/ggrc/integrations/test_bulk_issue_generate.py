@@ -1016,12 +1016,43 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
     # 3 times for each assessment
     self.assertEqual(update_issue_mock.call_count, 9)
 
-  @ddt.data("Issue", "Assessment")
-  def test_get_issue_json(self, model):
+  def test_get_assmt_issue_json(self):
     """Test get_issue_json method issue's update"""
     with factories.single_commit():
-      factory = factories.get_model_factory(model)
-      obj = factory()
+      obj = factories.AssessmentFactory()
+      factories.IssueTrackerIssueFactory(
+          enabled=True,
+          issue_tracked_obj=obj,
+          title='title',
+          component_id=111,
+          hotlist_id=222,
+          issue_type="PROCESS",
+          issue_priority="P2",
+          issue_severity="S2",
+      )
+    expected_result = {
+        'component_id': 111,
+        'severity': u'S2',
+        'title': u'title',
+        'hotlist_ids': [222],
+        'priority': u'P2',
+        'type': u'PROCESS',
+        'custom_fields': [{
+            'display_string': 'Due Date',
+            'type': 'DATE',
+            'name': 'Due Date',
+            'value': None,
+        }],
+    }
+    updater = issuetracker_bulk_sync.IssueTrackerBulkUpdater()
+    # pylint: disable=protected-access
+    result = updater._get_issue_json(obj)
+    self.assertEqual(expected_result, result)
+
+  def test_get_issue_issue_json(self):
+    """Test get_issue_json method issue's update"""
+    with factories.single_commit():
+      obj = factories.IssueFactory()
       factories.IssueTrackerIssueFactory(
           enabled=True,
           issue_tracked_obj=obj,

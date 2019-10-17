@@ -59,6 +59,7 @@ class IssuetrackerIssue(base.ContextRBAC, Base, db.Model):
         cls.object_type == object_type,
         cls.object_id == object_id).first()
 
+  # pylint: disable=arguments-differ
   def to_dict(self, include_issue=False, include_private=False):
     """Returns representation of object as a dict.
 
@@ -193,8 +194,7 @@ class IssuetrackerIssue(base.ContextRBAC, Base, db.Model):
     self.issue_id = info['issue_id']
     self.issue_url = info['issue_url']
 
-    if info.get('due_date'):
-      self.due_date = info.get('due_date')
+    self.due_date = info.get('due_date')
 
     self.people_sync_enabled = info['people_sync_enabled']
 
