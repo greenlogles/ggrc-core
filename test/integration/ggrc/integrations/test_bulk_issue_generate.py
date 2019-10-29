@@ -464,6 +464,69 @@ class TestBulkIssuesGenerate(TestBulkIssuesSync):
     self.assertIn(assmt.title, body)
     self.assertIn(data_handlers.get_object_url(assmt), body)
 
+  def test_create_revisions_failed_to_create_asmnt_iti(self):
+    """Test create revisions in case bulk sync assessments failed"""
+    _, assessment_ids = self.setup_assessments(1)
+    assessment_id = assessment_ids[0]
+    expected_errors = [['Assessment', assessment_id, '']]
+    asmnt_issuetracker_info = ('Assessment', assessment_id, "123", "321"),
+    asmnt = inflector.get_model('Assessment').query.get(assessment_id)
+    iti_obj_id = asmnt.issuetracker_issue.id
+
+    with mock.patch(
+        'ggrc.integrations.issuetracker_bulk_sync.'
+        'IssueTrackerBulkCreator.sync_issue',
+        side_effect=integrations_errors.Error
+    ):
+      response = self.generate_issues_for(asmnt_issuetracker_info)
+
+    self.assert200(response)
+    self.assertEqual(response.json.get('errors'), expected_errors)
+    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
+    revision = all_models.Revision.query.filter(
+        all_models.Revision.resource_id == iti_obj_id,
+        all_models.Revision.resource_type == 'IssuetrackerIssue',
+        all_models.Revision.action == 'modified',
+    ).one()
+    self.assertEqual(iti_obj.enabled, False)
+    self.assertEqual(revision.content['enabled'], False)
+
+  def test_create_revisions_failed_to_create_issue_iti(self):
+    """Test create revisions in case bulk sync issues failed"""
+    with factories.single_commit():
+      person = factories.PersonFactory()
+      issue = factories.IssueFactory(modified_by=person)
+      issue_id = issue.id
+      expected_errors = [['Issue', issue_id, '']]
+      for role_name in ["Admin", "Primary Contacts"]:
+        issue.add_person_with_role_name(person, role_name)
+      iti_obj = factories.IssueTrackerIssueFactory(
+          enabled=True,
+          issue_tracked_obj=issue,
+          issue_id=None,
+      )
+      iti_obj_id = iti_obj.id
+    issue_issuetracker_info = [
+        ("Issue", issue_id, '123', '321')
+    ]
+
+    with mock.patch(
+        'ggrc.integrations.issuetracker_bulk_sync.'
+        'IssueTrackerBulkCreator.sync_issue',
+        side_effect=integrations_errors.Error
+    ):
+      response = self.generate_issues_for(issue_issuetracker_info)
+
+    self.assert200(response)
+    self.assertEqual(response.json.get('errors'), expected_errors)
+    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
+    revision = all_models.Revision.query.filter(
+        all_models.Revision.resource_id == iti_obj.id,
+        all_models.Revision.resource_type == 'IssuetrackerIssue',
+        all_models.Revision.action == 'modified',
+    ).one()
+    self.assertEqual(revision.content['enabled'], False)
+
 
 @ddt.ddt
 class TestBulkIssuesChildGenerate(TestBulkIssuesSync):
@@ -802,6 +865,38 @@ class TestBulkIssuesChildGenerate(TestBulkIssuesSync):
     }
     self.assertEquals(set(revisions), expected_revisions)
 
+  def test_failed_sync_child_issues_enabled_not_changed(self):
+    """Test issueTracker issue object wasn't
+    changed in case bulk sync failed"""
+    with factories.single_commit():
+      asmnt = factories.AssessmentFactory()
+      expected_errors = [['Assessment', asmnt.id, '']]
+      iti_obj = factories.IssueTrackerIssueFactory(
+          enabled=True,
+          issue_tracked_obj=asmnt.audit
+      )
+    iti_obj_id = iti_obj.id
+
+    with mock.patch(
+        'ggrc.integrations.issuetracker_bulk_sync.'
+        'IssueTrackerBulkChildCreator.sync_issue',
+        side_effect=integrations_errors.Error
+    ):
+      response = self.generate_children_issues_for(
+          "Audit", asmnt.audit.id, "Assessment"
+      )
+
+    self.assert200(response)
+    self.assertEqual(response.json.get('errors'), expected_errors)
+    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
+    self.assertEqual(iti_obj.enabled, True)
+    revisions = all_models.Revision.query.filter(
+        all_models.Revision.resource_id == iti_obj_id,
+        all_models.Revision.resource_type == 'IssuetrackerIssue',
+        all_models.Revision.action == 'modified',
+    ).all()
+    self.assertEquals(revisions, [])
+
 
 @ddt.ddt
 class TestBulkIssuesUpdate(TestBulkIssuesSync):
@@ -816,7 +911,7 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
         all_models.IssuetrackerIssue.object_id.in_(assessment_ids)
     )
     for issue in issues:
-      issue.enabled = 1
+      issue.enabled = True
       issue.title = ""
       issue.component_id = "1"
       issue.hotlist_id = "1"
@@ -949,6 +1044,39 @@ class TestBulkIssuesUpdate(TestBulkIssuesSync):
     # pylint: disable=protected-access
     result = updater._get_issue_json(obj)
     self.assertEqual(expected_result, result)
+
+  def test_failed_update_issues_enabled_not_changed(self):
+    """Test issueTracker issue object enabled status wasn't
+    changed in case bulk sync failed"""
+    _, assessment_ids = self.setup_assessments(1)
+    assessment_id = assessment_ids[0]
+    asmnt = inflector.get_model('Assessment').query.get(assessment_id)
+    expected_errors = [['Assessment', asmnt.id, '']]
+    iti_obj = asmnt.issuetracker_issue
+    iti_obj_id = iti_obj.id
+    iti_obj.issue_id = iti_obj_id
+    db.session.commit()
+    asmnt_issuetracker_info = [
+        ("Assessment", id_, "123", "321") for id_ in assessment_ids
+    ]
+
+    with mock.patch(
+        'ggrc.integrations.issuetracker_bulk_sync.'
+        'IssueTrackerBulkUpdater.sync_issue',
+        side_effect=integrations_errors.Error
+    ):
+      response = self.update_issues_for(asmnt_issuetracker_info)
+
+    self.assert200(response)
+    self.assertEqual(response.json.get('errors'), expected_errors)
+    iti_obj = all_models.IssuetrackerIssue.query.get(iti_obj_id)
+    self.assertEqual(iti_obj.enabled, True)
+    revisions = all_models.Revision.query.filter(
+        all_models.Revision.resource_id == iti_obj_id,
+        all_models.Revision.resource_type == 'IssuetrackerIssue',
+        all_models.Revision.action == 'modified',
+    ).all()
+    self.assertEquals(revisions, [])
 
 
 @ddt.ddt

@@ -286,12 +286,23 @@ class IssueTrackerBulkCreator(object):
       update_values = self._create_failed_items_list(errors)
       db.session.execute(stmt, update_values)
       db.session.commit()
+      log_info = self._create_failed_items_log_info(errors)
+      self.log_issues(log_info)
+      db.session.commit()
     except sa.exc.OperationalError as error:
       logger.exception(error)
       raise exceptions.InternalServerError(
           "Failed to turn integration off for IssueTracker issues "
           "that weren't synced in database."
       )
+
+  @staticmethod
+  def _create_failed_items_log_info(errors):
+    """Create applicable for log_issues method list from errors """
+    return [(
+        object_._inflector.model_singular,
+        object_.id
+    ) for object_, _ in errors]
 
   @staticmethod
   def _create_failed_items_list(errors):
