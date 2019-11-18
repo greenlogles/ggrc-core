@@ -208,9 +208,7 @@ class TestIssueIntegration(ggrc.TestCase):
               return_value={"issueId": "issueId"})
   @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
   def test_issue_tracker_verifier(self, mock_create_issue):
-    """Test ticket verifier in buganizer is
-    first of admins in alphabetical order
-    """
+    """Test ticket verifier is first of admins in alphabetical order"""
     title = "test title"
     with factories.single_commit():
       verifier_email = 'abc@example.com'
@@ -227,29 +225,6 @@ class TestIssueIntegration(ggrc.TestCase):
         all_models.AccessControlRole.name == "Admin",
         all_models.AccessControlRole.object_type == "Issue",
     ).one().id
-    acl = [
-        {
-            "ac_role_id": admin_acr_id,
-            "person": {
-                "type": "Person",
-                "id": person1_id,
-            }
-        },
-        {
-            "ac_role_id": admin_acr_id,
-            "person": {
-                "type": "Person",
-                "id": person2_id,
-            }
-        },
-        {
-            "ac_role_id": admin_acr_id,
-            "person": {
-                "type": "Person",
-                "id": verifier_id,
-            }
-        },
-    ]
 
     response = self.api.post(all_models.Issue, {
         "issue": {
@@ -257,7 +232,11 @@ class TestIssueIntegration(ggrc.TestCase):
             "issue_tracker": {
                 "enabled": True,
             },
-            "access_control_list": acl,
+            "access_control_list": [
+                acl_helper.get_acl_json(admin_acr_id, person1_id),
+                acl_helper.get_acl_json(admin_acr_id, person2_id),
+                acl_helper.get_acl_json(admin_acr_id, verifier_id),
+            ],
             "due_date": "10/10/2019"
         },
     })
@@ -268,8 +247,10 @@ class TestIssueIntegration(ggrc.TestCase):
     self.assertEqual(call_args['verifier'], verifier_email)
     self.assertEqual(response.status_code, 201)
     issue_id = response.json.get("issue").get("id")
-    issue_tracker_issue = models.IssuetrackerIssue.get_issue("Issue",
-                                                             issue_id)
+    issue_tracker_issue = models.IssuetrackerIssue.get_issue(
+        "Issue",
+        issue_id
+    )
     self.assertTrue(issue_tracker_issue.enabled)
     self.assertEqual(issue_tracker_issue.title, title)
 
