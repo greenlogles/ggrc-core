@@ -306,7 +306,7 @@ class IssueParamsBuilder(BaseIssueTrackerParamsBuilder):
         person for person, acl in obj.access_control_list
         if acl.ac_role.name == "Admin" and person.email in allowed_emails
     ]
-    admins = sorted(admins, key=lambda person: person.name)
+    admins = sorted(admins, key=lambda person: person.email)
 
     issue_verifier_email = admins[0].email if admins else ""
     self.params.verifier = issue_verifier_email

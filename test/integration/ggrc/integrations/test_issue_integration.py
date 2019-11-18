@@ -204,6 +204,75 @@ class TestIssueIntegration(ggrc.TestCase):
       self.assertEqual(issue_tracker_issue.issue_priority, issue_priority)
       self.assertEqual(issue_tracker_issue.issue_severity, issue_severity)
 
+  @mock.patch("ggrc.integrations.issues.Client.create_issue",
+              return_value={"issueId": "issueId"})
+  @mock.patch.object(settings, "ISSUE_TRACKER_ENABLED", True)
+  def test_issue_tracker_verifier(self, mock_create_issue):
+    """Test ticket verifier in buganizer is
+    first of admins in alphabetical order
+    """
+    title = "test title"
+    with factories.single_commit():
+      verifier_email = 'abc@example.com'
+      verifier_id = factories.PersonFactory(
+          email=verifier_email
+      ).id
+      person1_id = factories.PersonFactory(
+          email='bac@example.com'
+      ).id
+      person2_id = factories.PersonFactory(
+          email='bca@example.com'
+      ).id
+    admin_acr_id = all_models.AccessControlRole.query.filter(
+        all_models.AccessControlRole.name == "Admin",
+        all_models.AccessControlRole.object_type == "Issue",
+    ).one().id
+    acl = [
+        {
+            "ac_role_id": admin_acr_id,
+            "person": {
+                "type": "Person",
+                "id": person1_id,
+            }
+        },
+        {
+            "ac_role_id": admin_acr_id,
+            "person": {
+                "type": "Person",
+                "id": person2_id,
+            }
+        },
+        {
+            "ac_role_id": admin_acr_id,
+            "person": {
+                "type": "Person",
+                "id": verifier_id,
+            }
+        },
+    ]
+
+    response = self.api.post(all_models.Issue, {
+        "issue": {
+            "title": title,
+            "issue_tracker": {
+                "enabled": True,
+            },
+            "access_control_list": acl,
+            "due_date": "10/10/2019"
+        },
+    })
+
+    mock_create_issue.assert_called_once()
+    call_args_list, _ = mock_create_issue.call_args
+    call_args = call_args_list[0]
+    self.assertEqual(call_args['verifier'], verifier_email)
+    self.assertEqual(response.status_code, 201)
+    issue_id = response.json.get("issue").get("id")
+    issue_tracker_issue = models.IssuetrackerIssue.get_issue("Issue",
+                                                             issue_id)
+    self.assertTrue(issue_tracker_issue.enabled)
+    self.assertEqual(issue_tracker_issue.title, title)
+
   def test_exclude_auditor(self):
     """Test 'exclude_auditor_emails' util."""
     audit = factories.AuditFactory()
