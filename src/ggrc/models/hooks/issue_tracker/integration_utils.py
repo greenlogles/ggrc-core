@@ -15,6 +15,8 @@ from ggrc.utils import referenced_objects
 
 def is_already_linked(ticket_id):
   """Checks if ticket with ticket_id is already linked to GGRC object"""
+  if ticket_id is None:
+    return False
   exists_query = db.session.query(
       all_models.IssuetrackerIssue.issue_id
   ).filter_by(issue_id=ticket_id).exists()

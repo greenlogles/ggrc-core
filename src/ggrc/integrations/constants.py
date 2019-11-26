@@ -61,6 +61,10 @@ COMMENT_TMPL = (
     u"information from the GGRC '{model}'. Link - {link}"
 )
 
+ASMT_TEST_PLAN_UPD_TMPL = (
+    u"Assessment Procedure has been updated.\n{}"
+)
+
 AVAILABLE_PRIORITIES = ("P0", "P1", "P2", "P3", "P4", )
 AVAILABLE_SEVERITIES = ("S0", "S1", "S2", "S3", "S4", )
 

@@ -28,6 +28,7 @@ from ggrc.models import exceptions
 from ggrc.rbac import permissions
 from ggrc.services import signals
 from ggrc.utils import referenced_objects
+from ggrc.utils import helpers as helper_utils
 
 
 logger = logging.getLogger(__name__)
@@ -599,6 +600,21 @@ class AssessmentTrackerHandler(object):
         issue_db_info
     )
 
+  def handle_assmt_test_plan_update(self, assessment):
+    """Handle assessment's test plan update.
+
+    Args:
+        assessment (models.Assessment): Assessment instance.
+    """
+    if (
+        self._is_tracker_enabled(assessment.audit) and
+        helper_utils.has_attr_changes(assessment, "test_plan")
+    ):
+      issue_obj = assessment.issuetracker_issue
+      issue_id = issue_obj.issue_id if issue_obj else None
+      if issue_id and integration_utils.is_already_linked(issue_id):
+        self._add_update_test_plan_comment(assessment)
+
   @staticmethod
   def handle_template_delete(assessment_template):
     """Handle assessment template delete.
@@ -854,6 +870,17 @@ class AssessmentTrackerHandler(object):
               assessment,
               issue_db_info
           )
+
+  def _add_update_test_plan_comment(self, assessment):
+    """Send test plan update comment to issue.
+
+    Args:
+        assessment (models.Assessment): Assessment instance.
+    """
+    issue_id = assessment.issuetracker_issue.issue_id
+    issue_payload = self._collect_payload_test_plan_upd(assessment.test_plan)
+    sync_result = self._send_issue_update(issue_id, issue_payload)
+    self._ticket_warnings_for_update(sync_result, assessment)
 
   @staticmethod
   def _get_issue_from_assmt_template(template_info):
@@ -1309,6 +1336,19 @@ class AssessmentTrackerHandler(object):
     )
 
     return template.format(issue_id=issue_id)
+
+  @staticmethod
+  def _generate_test_plan_upd_comment(test_plan):
+    """Generate test plan update comment.
+
+    Args:
+      test_plan (str): New test plan to include into comment.
+
+    Returns:
+      String representing comment for test plan update.
+    """
+    test_plan = html2text.HTML2Text().handle(test_plan).strip("\n")
+    return constants.ASMT_TEST_PLAN_UPD_TMPL.format(test_plan)
 
   @classmethod
   def _handle_people_emails(cls, assessment, issue_db_info):
@@ -1794,6 +1834,13 @@ class AssessmentTrackerHandler(object):
     }
 
     return issue_payload
+
+  @classmethod
+  def _collect_payload_test_plan_upd(cls, test_plan):
+    """Collect assessment's test plan update payload."""
+    return {
+        "comment": cls._generate_test_plan_upd_comment(test_plan)
+    }
 
   def _merge_issue_information(self, issue_info_db, issue_tracker_info):
     """Merge issue information with Issue Tracker.

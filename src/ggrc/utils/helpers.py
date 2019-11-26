@@ -4,7 +4,9 @@
 """Helper methods."""
 import functools
 from functools import wraps
+
 from flask import _app_ctx_stack
+import sqlalchemy as sa
 
 from ggrc.utils import structures
 
@@ -44,6 +46,13 @@ def without_sqlalchemy_cache(func):
         del _app_ctx_stack.top.sqlalchemy_queries
     return res
   return wrapper
+
+
+def has_attr_changes(obj, attr_name):
+  # type: (db.Model, str) -> bool
+  """Check if object has changes of specific attribute in current session."""
+  attr_state = getattr(sa.inspect(obj).attrs, attr_name, None)
+  return attr_state and attr_state.history.has_changes()
 
 
 def assert_type(obj, expected_type):
